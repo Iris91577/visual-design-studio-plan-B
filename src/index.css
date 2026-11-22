@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --color-brand-50: #EFF5FF;
+  --color-brand-100: #DBE8FE;
+  --color-brand-200: #BFD6FE;
+  --color-brand-500: #3B7BF6;
+  --color-brand-600: #2563EB;
+  --color-brand-700: #1D4FD8;
+  --color-ink: #0F172A;
+  --color-workspace: #EEF0F4;
+}
+
+html, body, #root { height: 100%; }
+body {
+  @apply bg-white font-sans text-ink antialiased;
+  font-feature-settings: "ss01", "cv11";
+}
+
+.scrollbar-thin { scrollbar-width: thin; scrollbar-color: #CBD5E1 transparent; }
+
+@keyframes vds-toast-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+.animate-toast { animation: vds-toast-in .18s ease-out; }
+
+@keyframes vds-shimmer { 0% { background-position: -400px 0 } 100% { background-position: 400px 0 } }
+.shimmer {
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.7) 50%, rgba(255,255,255,0) 100%);
+  background-size: 800px 100%;
+  animation: vds-shimmer 1.4s linear infinite;
+}
+
+.dot-grid {
+  background-image: radial-gradient(#D5DAE3 1px, transparent 1px);
+  background-size: 18px 18px;
+}
