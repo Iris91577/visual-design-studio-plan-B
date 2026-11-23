@@ -1,6 +1,6 @@
 import { Lock, Search } from 'lucide-react'
 import { useState } from 'react'
-import { CATEGORY_LABELS, SHAPES } from '../lib/shapes'
+import { CATEGORY_LABELS, SHAPE_CATEGORIES, SHAPES } from '../lib/shapes'
 import { isLight } from '../lib/palette'
 import type { ExperimentConfig, ShapeCategory, ShapeType } from '../lib/types'
 import { ShapeThumb } from './ShapeSvg'
@@ -9,7 +9,7 @@ export function ElementsPanel({
   config, onAdd, readOnly = false, disabled = false,
 }: { config: ExperimentConfig; onAdd?: (t: ShapeType) => void; readOnly?: boolean; disabled?: boolean }) {
   const [query,setQuery]=useState('')
-  const cats: ShapeCategory[] = ['basic','polygons','decorative','organic','nature','abstract','lines','symbols','frames']
+  const cats: ShapeCategory[] = SHAPE_CATEGORIES
   return (
     <div className="p-4">
       <div className="flex items-baseline justify-between">

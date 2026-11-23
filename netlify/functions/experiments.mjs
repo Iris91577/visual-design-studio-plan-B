@@ -1,5 +1,6 @@
 import { getStore } from '@netlify/blobs'
 import { isAdmin } from '../lib/admin-auth.mjs'
+import { fixedPalette, supportedShapes } from '../lib/design-resources.mjs'
 
 const STORE = 'vds-experiments'
 const REGION = 'ap-southeast-1'
@@ -9,6 +10,12 @@ const json = (data, status = 200) => Response.json(data, {
   headers: { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
 })
 const getJSON = (bucket, key) => bucket.get(key, { type: 'json', consistency: 'strong' })
+const normalizeExperiment = (experiment) => experiment && ({
+  ...experiment,
+  allowedShapes: supportedShapes(experiment.allowedShapes),
+  palette: fixedPalette(),
+  allowCustomColors: false,
+})
 
 function validExperiment(value) {
   return Boolean(
@@ -27,7 +34,7 @@ async function readByCode(bucket, code) {
   if (!/^[\w-]{1,100}$/.test(code)) return null
   const mapping = await getJSON(bucket, `link:${code}`)
   if (!mapping?.id || !mapping?.condition) return null
-  const experiment = await getJSON(bucket, `published:${mapping.id}`)
+  const experiment = normalizeExperiment(await getJSON(bucket, `published:${mapping.id}`))
   return experiment ? { experiment, condition: mapping.condition } : null
 }
 
@@ -42,7 +49,7 @@ export default async (request) => {
       const [published,drafts]=await Promise.all([Promise.all(publishedBlobs.map(blob=>getJSON(bucket,blob.key))),Promise.all(draftBlobs.map(blob=>getJSON(bucket,blob.key)))])
       const merged=new Map(published.filter(Boolean).map(exp=>[exp.id,exp]))
       drafts.filter(Boolean).forEach(exp=>merged.set(exp.id,exp))
-      const experiments=[...merged.values()].sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt)))
+      const experiments=[...merged.values()].map(normalizeExperiment).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt)))
       return json({ experiments })
     }
     const code = url.searchParams.get('code')
@@ -54,10 +61,10 @@ export default async (request) => {
     const id = url.searchParams.get('id') ?? ''
     if (!/^[\w-]{1,80}$/.test(id)) return json({ error: 'Invalid experiment id.' }, 400)
     const view = url.searchParams.get('view') ?? 'published'
-    const published = await getJSON(bucket, `published:${id}`)
+    const published = normalizeExperiment(await getJSON(bucket, `published:${id}`))
     if (view === 'published') return published ? json({ experiment: published }) : json({ error: 'Not found.' }, 404)
     if (!(await isAdmin(request))) return json({ error: 'Researcher sign-in required.' }, 401)
-    const draft = await getJSON(bucket, `draft:${id}`)
+    const draft = normalizeExperiment(await getJSON(bucket, `draft:${id}`))
     return draft || published
       ? json({ experiment: draft ?? published, published, source: draft ? 'draft' : 'published' })
       : json({ error: 'Not found.' }, 404)
@@ -67,7 +74,7 @@ export default async (request) => {
   if (!(await isAdmin(request))) return json({ error: 'Researcher sign-in required.' }, 401)
   const body = await request.json().catch(() => ({}))
   const action = body.action
-  const experiment = body.experiment
+  const experiment = normalizeExperiment(body.experiment)
   if (!['draft', 'publish'].includes(action) || !validExperiment(experiment)) {
     return json({ error: 'Invalid experiment configuration.' }, 400)
   }

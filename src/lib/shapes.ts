@@ -1,23 +1,25 @@
 import type { DesignElement, ShapeCategory, ShapeType } from './types'
 
-export interface ShapeDef { type: ShapeType; name: string; category: ShapeCategory; lockAspect: boolean; isLine: boolean; defaultW: number; defaultH: number }
-const s = (type: ShapeType, name: string, category: ShapeCategory, extra: Partial<ShapeDef> = {}): ShapeDef => ({ type, name, category, lockAspect: false, isLine: false, defaultW: .25, defaultH: .25, ...extra })
+export interface ShapeDef { type: ShapeType; name: string; category: ShapeCategory; lockAspect: boolean; isLine: boolean; defaultW: number; defaultH: number; defaultRotation: number }
+const s = (type: ShapeType, name: string, category: ShapeCategory, extra: Partial<ShapeDef> = {}): ShapeDef => ({ type, name, category, lockAspect: false, isLine: false, defaultW: .25, defaultH: .25, defaultRotation: 0, ...extra })
 
-/** 67 editable assets. A placed asset always remains one measurable element. */
+/** The shared 30-item library used by the researcher, Human and AI conditions. */
 export const SHAPES: ShapeDef[] = [
-  s('circle','Circle','basic',{lockAspect:true}),s('ellipse','Ellipse','basic',{defaultW:.32,defaultH:.2}),s('square','Square','basic',{lockAspect:true}),s('rectangle','Rectangle','basic',{defaultW:.34,defaultH:.2}),s('roundedRectangle','Rounded Rectangle','basic',{defaultW:.34,defaultH:.2}),s('capsule','Capsule','basic',{defaultW:.34,defaultH:.14}),s('triangle','Triangle','basic'),s('rightTriangle','Right Triangle','basic'),s('diamond','Diamond','basic'),s('trapezoid','Trapezoid','basic'),s('parallelogram','Parallelogram','basic'),
-  s('pentagon','Pentagon','polygons'),s('hexagon','Hexagon','polygons'),s('heptagon','Heptagon','polygons'),s('octagon','Octagon','polygons'),s('nonagon','Nonagon','polygons'),s('decagon','Decagon','polygons'),s('dodecagon','Dodecagon','polygons'),
-  s('star','Five-point Star','decorative'),s('fourPointStar','Four-point Star','decorative'),s('sixPointStar','Six-point Star','decorative'),s('sparkle','Sparkle','decorative'),s('heart','Heart','decorative'),s('crescent','Crescent','decorative'),s('sun','Sun','decorative'),s('burst','Burst','decorative'),
-  s('blobOne','Organic Blob 1','organic'),s('blobTwo','Organic Blob 2','organic'),s('teardrop','Teardrop','organic'),s('leaf','Leaf','organic'),s('cloud','Cloud','organic',{defaultW:.34,defaultH:.2}),s('petal','Petal','organic'),s('pebble','Pebble','organic'),s('waveBlock','Wave Block','organic'),
-  s('flowerFive','Five-petal Flower','nature'),s('flowerSix','Six-petal Flower','nature'),s('clover','Clover','nature'),s('snowflake','Snowflake','nature'),s('tree','Tree','nature'),s('mountain','Mountain','nature',{defaultW:.34,defaultH:.22}),
-  s('semicircle','Semicircle','abstract'),s('quarterCircle','Quarter Circle','abstract'),s('sector','Sector','abstract'),s('ring','Ring','abstract'),s('arch','Arch','abstract'),s('chevron','Chevron','abstract'),s('shield','Shield','abstract'),s('ribbon','Ribbon','abstract'),
-  s('line','Straight Line','lines',{isLine:true,defaultW:.4,defaultH:.04}),s('dashedLine','Dashed Line','lines',{isLine:true,defaultW:.4,defaultH:.04}),s('curve','Curve','lines',{defaultW:.36,defaultH:.14}),s('arc','Arc','lines'),s('waveLine','Wave Line','lines',{defaultW:.4,defaultH:.14}),s('zigzagLine','Zigzag Line','lines',{defaultW:.4,defaultH:.14}),s('arrow','Arrow','lines',{isLine:true,defaultW:.36,defaultH:.06}),s('doubleArrow','Double Arrow','lines',{isLine:true,defaultW:.36,defaultH:.06}),
-  s('cross','Cross','symbols'),s('plus','Plus','symbols'),s('lightning','Lightning','symbols'),s('check','Check','symbols'),s('xMark','X Mark','symbols'),s('speechBubble','Speech Bubble','symbols'),s('locationPin','Location Pin','symbols'),s('musicNote','Music Note','symbols'),
-  s('rectangleFrame','Rectangle Frame','frames',{defaultW:.34,defaultH:.24}),s('circleFrame','Circle Frame','frames',{lockAspect:true}),s('roundedFrame','Rounded Frame','frames',{defaultW:.34,defaultH:.24}),
+  s('circle','Circle','basic',{lockAspect:true}),s('ellipse','Ellipse','basic',{defaultW:.32,defaultH:.2}),s('square','Square','basic',{lockAspect:true}),s('rectangle','Rectangle','basic',{defaultW:.34,defaultH:.2}),s('roundedRectangle','Rounded Rectangle','basic',{defaultW:.34,defaultH:.2}),
+  s('triangle','Triangle','basic'),s('rightTriangle','Right Triangle','basic'),s('diamond','Diamond','basic'),s('trapezoid','Trapezoid','basic'),s('parallelogram','Parallelogram','basic'),s('semicircle','Semicircle','basic'),s('quarterCircle','Quarter Circle','basic'),
+  s('pentagon','Pentagon','polygons'),s('hexagon','Hexagon','polygons'),s('octagon','Octagon','polygons'),
+  s('star','Five-point Star','decorative'),s('fourPointStar','Four-point Star','decorative'),s('sixPointStar','Six-point Star','decorative'),s('sparkle','Sparkle','decorative'),s('heart','Heart','decorative'),s('crescent','Crescent','decorative'),s('sun','Sun','decorative'),
+  s('line','Straight Line','lines',{isLine:true,defaultW:.4,defaultH:.04}),s('curve','Curve','lines',{defaultW:.36,defaultH:.14}),s('waveLine','Wave Line','lines',{defaultW:.4,defaultH:.14}),
+  s('arrow','Right Arrow','lines',{isLine:true,defaultW:.36,defaultH:.06}),s('arrowLeft','Left Arrow','lines',{isLine:true,defaultW:.36,defaultH:.06,defaultRotation:180}),s('arrowUp','Up Arrow','lines',{isLine:true,defaultW:.36,defaultH:.06,defaultRotation:-90}),s('arrowDown','Down Arrow','lines',{isLine:true,defaultW:.36,defaultH:.06,defaultRotation:90}),
+  s('cross','Cross','symbols'),
 ]
 export const SHAPE_MAP=Object.fromEntries(SHAPES.map(x=>[x.type,x])) as Record<ShapeType,ShapeDef>
 export const ALL_SHAPE_TYPES=SHAPES.map(x=>x.type)
-export const CATEGORY_LABELS:Record<ShapeCategory,string>={basic:'Basic Shapes',polygons:'Polygons',decorative:'Decorative',organic:'Organic Shapes',nature:'Floral & Nature',abstract:'Abstract',lines:'Lines & Curves',symbols:'Symbols & Icons',frames:'Frames & Borders'}
+export const SHAPE_CATEGORIES:ShapeCategory[]=['basic','polygons','decorative','lines','symbols']
+export const CATEGORY_LABELS:Record<ShapeCategory,string>={basic:'Basic Shapes',polygons:'Polygons',decorative:'Decorative',organic:'Organic Shapes',nature:'Floral & Nature',abstract:'Abstract',lines:'Lines & Arrows',symbols:'Symbols & Icons',frames:'Frames & Borders'}
+
+/** Directional arrow presets count as one shape family in complexity measures. */
+export function shapeFamily(type:ShapeType){return ['arrow','arrowLeft','arrowUp','arrowDown'].includes(type)?'arrow':type}
 
 export interface Primitive { d:string; fill?:string; stroke?:string; strokeWidth?:number; dash?:string }
 const f=(n:number)=>Math.round(n*100)/100
@@ -48,9 +50,9 @@ export function shapePrimitives(el:DesignElement,weight:number):Primitive[]{
  case'semicircle':return F(`M${-hw},${hh}A${hw},${h} 0 0 1 ${hw},${hh}Z`);case'quarterCircle':return F(`M${-hw},${hh}V${-hh}A${w},${h} 0 0 1 ${hw},${hh}Z`);case'sector':return F(`M0,0L0,${-hh}A${hw},${hh} 0 0 1 ${hw},0Z`)
  case'ring':return F(`M${-hw},0A${hw},${hh} 0 1 0 ${hw},0A${hw},${hh} 0 1 0 ${-hw},0M${-hw*.62},0A${hw*.62},${hh*.62} 0 1 1 ${hw*.62},0A${hw*.62},${hh*.62} 0 1 1 ${-hw*.62},0Z`);case'arch':return F(`M${-hw},${hh}V0A${hw},${hh} 0 0 1 ${hw},0V${hh}H${hw*.62}V0A${hw*.62},${hh*.62} 0 0 0 ${-hw*.62},0V${hh}Z`);case'chevron':return F(`M${-hw},${-hh}L0,0L${hw},${-hh}V0L0,${hh}L${-hw},0Z`);case'shield':return F(`M${-hw},${-hh}H${hw}V0C${hw},${hh*.55} 0,${hh} 0,${hh}C0,${hh} ${-hw},${hh*.55} ${-hw},0Z`);case'ribbon':return F(`M${-hw},${-hh}H${hw}L${w*.35},0L${hw},${hh}H${-hw}L${-w*.35},0Z`)
  case'line':return S(`M${-hw},0H${hw}`);case'dashedLine':return S(`M${-hw},0H${hw}`,`${weight*2} ${weight*1.4}`);case'curve':return S(`M${-hw},${hh}C${-hw/3},${-hh*1.6} ${hw/3},${hh*1.6} ${hw},${-hh}`);case'arc':return S(`M${-hw},${hh}A${hw},${h} 0 0 1 ${hw},${hh}`);case'waveLine':return S(`M${-hw},0C${-w*.3},${-hh} ${-w*.2},${-hh} 0,0C${w*.2},${hh} ${w*.3},${hh} ${hw},0`);case'zigzagLine':return S(`M${-hw},${hh}L${-w*.25},${-hh}L0,${hh}L${w*.25},${-hh}L${hw},${hh}`)
- case'arrow':return[...S(`M${-hw},0H${hw*.55}`),...F(`M${hw},0L${hw*.5},${-hh}V${hh}Z`)];case'doubleArrow':return[...S(`M${-hw*.55},0H${hw*.55}`),...F(`M${hw},0L${hw*.5},${-hh}V${hh}ZM${-hw},0L${-hw*.5},${-hh}V${hh}Z`)]
+ case'arrow':case'arrowLeft':case'arrowUp':case'arrowDown':return[...S(`M${-hw},0H${hw*.55}`),...F(`M${hw},0L${hw*.5},${-hh}V${hh}Z`)];case'doubleArrow':return[...S(`M${-hw*.55},0H${hw*.55}`),...F(`M${hw},0L${hw*.5},${-hh}V${hh}ZM${-hw},0L${-hw*.5},${-hh}V${hh}Z`)]
  case'cross':case'plus':return F(`M${-w*.14},${-hh}H${w*.14}V${-h*.14}H${hw}V${h*.14}H${w*.14}V${hh}H${-w*.14}V${h*.14}H${-hw}V${-h*.14}H${-w*.14}Z`);case'lightning':return F(`M${w*.08},${-hh}L${-hw},${h*.08}H${-w*.06}L${-w*.18},${hh}L${hw},${-h*.08}H${w*.08}Z`);case'check':return S(`M${-hw},0L${-w*.12},${hh}L${hw},${-hh}`);case'xMark':return S(`M${-hw},${-hh}L${hw},${hh}M${hw},${-hh}L${-hw},${hh}`)
- case'speechBubble':return F(`${box(w,h*.72)}M${-w*.22},${h*.22}L${-w*.36},${hh}L${w*.02},${h*.22}Z`);case'locationPin':return F(`M0,${hh}C${-hw*.7},${h*.15} ${-hw},${-hh*.25} 0,${-hh}C${hw},${-hh*.25} ${hw*.7},${h*.15} 0,${hh}ZM0,${-h*.25}A${w*.15},${h*.15} 0 1 0 .1,${-h*.25}Z`);case'musicNote':return F(`M${w*.08},${-hh}H${hw}V${-h*.25}H${w*.2}V${h*.3}A${w*.22},${h*.22} 0 1 1 ${-w*.22},${h*.3}A${w*.22},${h*.22} 0 0 1 ${w*.08},${h*.3}Z`)
+ case'speechBubble':return F(`M${-hw},${-hh}H${hw}V${h*.22}H${w*.02}L${-w*.36},${hh}L${-w*.22},${h*.22}H${-hw}Z`);case'locationPin':return F(`M0,${hh}C${-hw*.7},${h*.15} ${-hw},${-hh*.25} 0,${-hh}C${hw},${-hh*.25} ${hw*.7},${h*.15} 0,${hh}ZM0,${-h*.25}A${w*.15},${h*.15} 0 1 0 .1,${-h*.25}Z`);case'musicNote':return F(`M${w*.08},${-hh}H${hw}V${-h*.25}H${w*.2}V${h*.3}A${w*.22},${h*.22} 0 1 1 ${-w*.22},${h*.3}A${w*.22},${h*.22} 0 0 1 ${w*.08},${h*.3}Z`)
  case'rectangleFrame':return S(box(w-weight,h-weight));case'circleFrame':return S(`M${-hw+weight},0A${hw-weight},${hh-weight} 0 1 0 ${hw-weight},0A${hw-weight},${hh-weight} 0 1 0 ${-hw+weight},0`)
  }
  return F(box(w,h))

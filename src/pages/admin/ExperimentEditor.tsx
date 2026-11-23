@@ -1,13 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Check, Copy, Eye, Hand, Lock, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, Check, Copy, Eye, Hand, Lock, Sparkles } from 'lucide-react'
 import { Badge, Button, Card, useToast } from '../../components/ui'
 import { DesignPreview, ShapeThumb } from '../../editor/ShapeSvg'
 import { AI_MODELS, METHOD_LABELS } from '../../lib/aiModels'
 import { CANVAS_MAX, CANVAS_MIN, CANVAS_PRESETS, CUSTOM_PRESET_ID } from '../../lib/canvasPresets'
 import { uid } from '../../lib/ids'
 import { DEFAULT_PALETTE, isLight } from '../../lib/palette'
-import { ALL_SHAPE_TYPES, CATEGORY_LABELS, SHAPES } from '../../lib/shapes'
+import { ALL_SHAPE_TYPES, CATEGORY_LABELS, SHAPE_CATEGORIES, SHAPES } from '../../lib/shapes'
 import type { Condition, ExperimentConfig, ShapeCategory } from '../../lib/types'
 import { loadExperiment, saveExperiment } from '../../services/experiments'
 import { loadSessions } from '../../services/sessions'
@@ -19,14 +19,12 @@ function blankExperiment(): ExperimentConfig {
   return {
     id: uid('exp'), name: 'Untitled experiment', version: 1, status: 'draft',
     canvas: { presetId: 'square-post', width: 1080, height: 1080, background: '#FFFFFF' },
-    allowBackgroundChange: true, allowCustomColors: true, allowedShapes: ALL_SHAPE_TYPES, palette: DEFAULT_PALETTE,
+    allowBackgroundChange: true, allowCustomColors: false, allowedShapes: ALL_SHAPE_TYPES, palette: DEFAULT_PALETTE,
     aiGenerationLimit: 1,
     ai: { method: 'structured', model: 'gpt-6.1-sol', temperature: 1, technicalRetries: 1 },
     returnUrl: '', links: { human: uid('h').slice(2, 8), ai: uid('a').slice(2, 8) }, createdAt: now, updatedAt: now,
   }
 }
-
-const HEX = /^#[0-9A-Fa-f]{6}$/
 
 export function ExperimentEditor() {
   const { id = 'new' } = useParams()
@@ -60,9 +58,8 @@ export function ExperimentEditor() {
     JSON.stringify([cfg.canvas.width, cfg.canvas.height, cfg.canvas.background, cfg.allowedShapes, cfg.palette, cfg.allowCustomColors])
   const willVersion = original.status === 'published' && rulesChanged
 
-  const paletteErrors = cfg.palette.some((c) => !HEX.test(c.hex) || !c.name.trim())
   const sizeError = cfg.canvas.width < CANVAS_MIN || cfg.canvas.width > CANVAS_MAX || cfg.canvas.height < CANVAS_MIN || cfg.canvas.height > CANVAS_MAX
-  const invalid = paletteErrors || sizeError || cfg.allowedShapes.length === 0 || cfg.palette.length === 0
+  const invalid = sizeError || cfg.allowedShapes.length === 0
 
   const save = async (publish: boolean) => {
     if (invalid) { toast('Fix the highlighted settings before saving.', 'error'); return }
@@ -158,7 +155,7 @@ export function ExperimentEditor() {
               <div>
                 <div className="mb-1.5 text-[13px] font-semibold text-slate-700">Background colour</div>
                 <div className="flex flex-wrap gap-1.5">
-                  {cfg.palette.filter((c) => HEX.test(c.hex)).map((c) => (
+                  {cfg.palette.map((c) => (
                     <button key={c.hex + c.name} title={c.name} onClick={() => setCanvas({ background: c.hex })}
                       className={`size-7 rounded-full transition hover:scale-110 ${isLight(c.hex) ? 'ring-1 ring-inset ring-slate-300' : ''} ${cfg.canvas.background === c.hex ? 'outline-2 outline-offset-2 outline-brand-600' : ''}`}
                       style={{ background: c.hex }} />
@@ -179,7 +176,7 @@ export function ExperimentEditor() {
               </div>
             }
           >
-            {(['basic', 'decorative', 'lines'] as ShapeCategory[]).map((cat) => (
+            {(SHAPE_CATEGORIES as ShapeCategory[]).map((cat) => (
               <div key={cat} className="mb-4 last:mb-0">
                 <div className="mb-2 text-[11.5px] font-bold uppercase tracking-[0.08em] text-slate-400">{CATEGORY_LABELS[cat]}</div>
                 <div className="flex flex-wrap gap-2">
@@ -203,26 +200,16 @@ export function ExperimentEditor() {
 
           <Section
             title="Colour palette"
-            hint="Solid colours only. Participants pick from these swatches; the AI may only use these HEX values."
-            action={<Button size="sm" onClick={() => set({ palette: [...cfg.palette, { name: 'New colour', hex: '#000000' }] })}><Plus className="size-3.5" /> Add colour</Button>}
+            hint="Fixed 30-colour palette shared by Human and AI. Custom HEX values and colour pickers are disabled."
           >
-            <div className="grid gap-2 md:grid-cols-2">
-              {cfg.palette.map((c, i) => {
-                const bad = !HEX.test(c.hex)
-                const update = (patch: Partial<typeof c>) => set({ palette: cfg.palette.map((x, j) => (j === i ? { ...x, ...patch } : x)) })
-                return (
-                  <div key={i} className="flex items-center gap-2 rounded-lg bg-slate-50 p-1.5 pr-1 ring-1 ring-slate-200">
-                    <span className={`size-8 shrink-0 rounded-md ${isLight(bad ? '#000000' : c.hex) ? 'ring-1 ring-inset ring-slate-300' : ''}`} style={{ background: bad ? 'repeating-linear-gradient(45deg,#fee2e2,#fee2e2 4px,#fff 4px,#fff 8px)' : c.hex }} />
-                    <input value={c.name} onChange={(e) => update({ name: e.target.value })} className="h-8 min-w-0 flex-1 rounded-md bg-white px-2 text-[13px] ring-1 ring-slate-200 focus:outline-none focus:ring-brand-500" />
-                    <input value={c.hex} onChange={(e) => update({ hex: e.target.value.toUpperCase() })} maxLength={7}
-                      className={`h-8 w-24 rounded-md bg-white px-2 font-mono text-[12.5px] ring-1 focus:outline-none ${bad ? 'text-red-600 ring-red-300' : 'ring-slate-200 focus:ring-brand-500'}`} />
-                    <button onClick={() => set({ palette: cfg.palette.filter((_, j) => j !== i) })} className="rounded-md p-1.5 text-slate-400 hover:bg-white hover:text-red-600" aria-label={`Remove ${c.name}`}><Trash2 className="size-4" /></button>
-                  </div>
-                )
-              })}
+            <div className="flex flex-wrap gap-3">
+              {cfg.palette.map((c) => (
+                <div key={c.hex} className="flex w-[145px] items-center gap-2 rounded-lg bg-slate-50 p-2 ring-1 ring-slate-200" title={`${c.name} ${c.hex}`}>
+                  <span className={`size-8 shrink-0 rounded-md ${isLight(c.hex) ? 'ring-1 ring-inset ring-slate-300' : ''}`} style={{ background: c.hex }} />
+                  <div className="min-w-0"><div className="truncate text-[12.5px] font-semibold text-slate-700">{c.name}</div><div className="font-mono text-[10.5px] text-slate-400">{c.hex}</div></div>
+                </div>
+              ))}
             </div>
-            <div className="mt-4 flex flex-wrap gap-5"><Toggle checked={cfg.allowCustomColors} onChange={v=>set({allowCustomColors:v})} label="Allow custom HEX / colour picker"/></div>
-            <button onClick={() => set({ palette: DEFAULT_PALETTE })} className="mt-3 text-[12.5px] font-semibold text-brand-600 hover:underline">Reset to the 48 default colours</button>
           </Section>
 
           <Section title="Participation rules" hint="Design time and element count are observed, not restricted.">

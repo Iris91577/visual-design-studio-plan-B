@@ -1,4 +1,6 @@
 import type { Condition, ExperimentConfig } from '../lib/types'
+import { DEFAULT_PALETTE } from '../lib/palette'
+import { ALL_SHAPE_TYPES } from '../lib/shapes'
 
 type EditorExperiment = {
   experiment: ExperimentConfig
@@ -12,13 +14,29 @@ async function readJson<T>(response: Response): Promise<T> {
   return payload as T
 }
 
+const supportedShapes = new Set(ALL_SHAPE_TYPES)
+function normalizeExperiment(experiment: ExperimentConfig): ExperimentConfig {
+  const allowedShapes = [...new Set((experiment.allowedShapes ?? []).filter((type) => supportedShapes.has(type)))]
+  return {
+    ...experiment,
+    allowedShapes: allowedShapes.length ? allowedShapes : ALL_SHAPE_TYPES,
+    palette: DEFAULT_PALETTE,
+    allowCustomColors: false,
+  }
+}
+
 export async function loadExperiment(id: string, view: 'published' | 'editor' = 'published') {
   const response = await fetch(`/api/experiments?id=${encodeURIComponent(id)}&view=${view}`, {
     credentials: 'same-origin',
     cache: 'no-store',
   })
   if (response.status === 404) return null
-  return readJson<EditorExperiment>(response)
+  const payload = await readJson<EditorExperiment>(response)
+  return {
+    ...payload,
+    experiment: normalizeExperiment(payload.experiment),
+    published: payload.published ? normalizeExperiment(payload.published) : null,
+  }
 }
 
 export async function loadPublishedExperiments() {
@@ -26,7 +44,8 @@ export async function loadPublishedExperiments() {
     credentials: 'same-origin',
     cache: 'no-store',
   })
-  return readJson<{ experiments: ExperimentConfig[] }>(response)
+  const payload = await readJson<{ experiments: ExperimentConfig[] }>(response)
+  return { experiments: payload.experiments.map(normalizeExperiment) }
 }
 
 export async function resolvePublishedLink(code: string) {
@@ -35,17 +54,20 @@ export async function resolvePublishedLink(code: string) {
     cache: 'no-store',
   })
   if (response.status === 404) return null
-  return readJson<{ experiment: ExperimentConfig; condition: Condition }>(response)
+  const payload = await readJson<{ experiment: ExperimentConfig; condition: Condition }>(response)
+  return { ...payload, experiment: normalizeExperiment(payload.experiment) }
 }
 
 export async function saveExperiment(experiment: ExperimentConfig, action: 'draft' | 'publish') {
+  const normalized = normalizeExperiment(experiment)
   const response = await fetch('/api/experiments', {
     method: 'PUT',
     credentials: 'same-origin',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ experiment, action }),
+    body: JSON.stringify({ experiment: normalized, action }),
   })
-  return readJson<{ experiment: ExperimentConfig; source: 'draft' | 'published' }>(response)
+  const payload = await readJson<{ experiment: ExperimentConfig; source: 'draft' | 'published' }>(response)
+  return { ...payload, experiment: normalizeExperiment(payload.experiment) }
 }
 
 export async function researcherLogin(email: string, password: string) {

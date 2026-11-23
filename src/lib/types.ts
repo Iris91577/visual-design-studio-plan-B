@@ -6,7 +6,7 @@ export type ShapeType =
   | 'blobOne' | 'blobTwo' | 'teardrop' | 'leaf' | 'cloud' | 'petal' | 'pebble' | 'waveBlock'
   | 'flowerFive' | 'flowerSix' | 'clover' | 'snowflake' | 'tree' | 'mountain'
   | 'semicircle' | 'quarterCircle' | 'sector' | 'ring' | 'arch' | 'chevron' | 'shield' | 'ribbon'
-  | 'line' | 'dashedLine' | 'curve' | 'arc' | 'waveLine' | 'zigzagLine' | 'arrow' | 'doubleArrow'
+  | 'line' | 'dashedLine' | 'curve' | 'arc' | 'waveLine' | 'zigzagLine' | 'arrow' | 'arrowLeft' | 'arrowUp' | 'arrowDown' | 'doubleArrow'
   | 'cross' | 'plus' | 'lightning' | 'check' | 'xMark' | 'speechBubble' | 'locationPin' | 'musicNote'
   | 'rectangleFrame' | 'circleFrame' | 'roundedFrame'
 

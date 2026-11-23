@@ -67,7 +67,7 @@ export function Landing() {
                 <div className="flex -space-x-1">
                   {DEFAULT_PALETTE.slice(0, 9).map((c) => <span key={c.hex} className="size-5 rounded-full ring-2 ring-white" style={{ background: c.hex }} />)}
                 </div>
-                <span className="text-[12px] font-medium text-slate-500">Same 67 elements · same colour tools · same export size</span>
+                <span className="text-[12px] font-medium text-slate-500">Same 30 elements · same colour tools · same export size</span>
               </div>
             </div>
           </div>

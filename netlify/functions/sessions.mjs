@@ -1,5 +1,6 @@
 import { getStore } from '@netlify/blobs'
 import { isAdmin } from '../lib/admin-auth.mjs'
+import { fixedPalette, supportedColour, supportedShapes } from '../lib/design-resources.mjs'
 
 const REGION = 'ap-southeast-1'
 const sessions = () => getStore('vds-sessions', { region: REGION })
@@ -88,6 +89,12 @@ export default async (request) => {
   // Published server state is the only authority for study links and rules.
   const resolved = await resolveLink(code)
   if (!resolved) return json({ error: 'This study link is no longer valid.' }, 404)
+  const experiment = {
+    ...resolved.experiment,
+    allowedShapes: supportedShapes(resolved.experiment.allowedShapes),
+    palette: fixedPalette(),
+    allowCustomColors: false,
+  }
   const id = await stableSessionId(code, pid)
   const existing = await getJSON(bucket, `session:${id}`)
   if (existing?.status === 'submitted') return json({ code: existing.completionCode, submittedAt: existing.submittedAt, id })
@@ -95,17 +102,22 @@ export default async (request) => {
   const now = new Date().toISOString()
   const started = new Date(metadata.startedAt)
   const startedAt = Number.isFinite(started.getTime()) && started.getTime() <= Date.now() ? started.toISOString() : now
-  const elements = Array.isArray(metadata.elements) ? metadata.elements.slice(0, 500) : []
+  const allowedShapes = new Set(experiment.allowedShapes)
+  const submittedElements = Array.isArray(metadata.elements) ? metadata.elements.slice(0, 500) : []
+  if (submittedElements.some((element) => !allowedShapes.has(element?.type) || !supportedColour(element?.fill))) {
+    return json({ error: 'The submitted design contains an unsupported element or colour.' }, 400)
+  }
+  const elements = submittedElements.map((element) => ({ ...element, fill: element.fill.toUpperCase() }))
   const actionLog = Array.isArray(metadata.actionLog) ? metadata.actionLog.slice(-3000) : []
   const imageKey = `image:${id}`
   const submittedGenerations = Array.isArray(metadata.aiGenerations) ? metadata.aiGenerations.slice(-10) : []
   const aiGenerations = resolved.condition === 'ai' && submittedGenerations.length ? submittedGenerations : resolved.condition === 'ai' && typeof metadata.prompt === 'string' ? [{
     id: `gen_${id.slice(4)}`,
     prompt: metadata.prompt.slice(0, 4000),
-    method: resolved.experiment.ai.method,
-    model: resolved.experiment.ai.model,
-    modelVersion: resolved.experiment.ai.model,
-    parameters: { temperature: resolved.experiment.ai.temperature },
+    method: experiment.ai.method,
+    model: experiment.ai.model,
+    modelVersion: experiment.ai.model,
+    parameters: { temperature: experiment.ai.temperature },
     requestedAt: startedAt,
     respondedAt: now,
     success: true,
@@ -117,18 +129,18 @@ export default async (request) => {
   const record = {
     id,
     participantId: pid,
-    experimentId: resolved.experiment.id,
-    experimentVersion: resolved.experiment.version,
+    experimentId: experiment.id,
+    experimentVersion: experiment.version,
     condition: resolved.condition,
     startedAt,
     submittedAt: now,
     status: 'submitted',
     completionCode: completionCode(),
     elements,
-    background: typeof metadata.background === 'string' ? metadata.background : resolved.experiment.canvas.background,
+    background: typeof metadata.background === 'string' ? metadata.background : experiment.canvas.background,
     actionLog,
     aiGenerations,
-    experiment: resolved.experiment,
+    experiment,
     pngKey: imageKey,
     imageType: file.type,
   }

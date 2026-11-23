@@ -4,8 +4,8 @@ Research platform for comparing autonomous Human Design and AI Design under the 
 
 ## What is different in Plan A
 
-- 67 categorised, editable design elements and a searchable library.
-- 48 default colours plus a HEX input and colour picker. All elements use fully opaque solid colours.
+- 30 categorised, editable design elements shared by the researcher, Human and AI interfaces.
+- A fixed 30-colour palette shared by Human and AI. Custom HEX values, colour pickers and transparency are disabled.
 - No experimental element-count limit, time limit, countdown or forced submission. Actual time and actions are still recorded.
 - AI Design uses `gpt-6.1-sol` structured output through Netlify AI Gateway. GPT returns element parameters; the website renders those elements with the same library used by Human Design.
 - The server-side instruction treats resources as options, not a checklist, and does not prescribe a number of elements/colours, a complexity level, composition style or aesthetic.
