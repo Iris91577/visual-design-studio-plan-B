@@ -108,6 +108,11 @@ export default async (request) => {
     return json({ error: 'The submitted design contains an unsupported element or colour.' }, 400)
   }
   const elements = submittedElements.map((element) => ({ ...element, fill: element.fill.toUpperCase() }))
+  const background = typeof metadata.background === 'string' ? metadata.background.toUpperCase() : String(experiment.canvas.background).toUpperCase()
+  const allowedBackgrounds = experiment.allowBackgroundChange
+    ? new Set(experiment.palette.map((colour) => colour.hex.toUpperCase()))
+    : new Set([String(experiment.canvas.background).toUpperCase()])
+  if (!allowedBackgrounds.has(background)) return json({ error: 'The submitted design contains an unsupported background colour.' }, 400)
   const actionLog = Array.isArray(metadata.actionLog) ? metadata.actionLog.slice(-3000) : []
   const imageKey = `image:${id}`
   const submittedGenerations = Array.isArray(metadata.aiGenerations) ? metadata.aiGenerations.slice(-10) : []
@@ -117,7 +122,7 @@ export default async (request) => {
     method: experiment.ai.method,
     model: experiment.ai.model,
     modelVersion: experiment.ai.model,
-    parameters: { temperature: experiment.ai.temperature },
+    parameters: { responseFormat: 'json_schema', sampling: 'provider_default' },
     requestedAt: startedAt,
     respondedAt: now,
     success: true,
@@ -137,7 +142,7 @@ export default async (request) => {
     status: 'submitted',
     completionCode: completionCode(),
     elements,
-    background: typeof metadata.background === 'string' ? metadata.background : experiment.canvas.background,
+    background,
     actionLog,
     aiGenerations,
     experiment,

@@ -9,6 +9,7 @@ Research platform for comparing autonomous Human Design and AI Design under the 
 - No experimental element-count limit, time limit, countdown or forced submission. Actual time and actions are still recorded.
 - AI Design uses `gpt-6.1-sol` structured output through Netlify AI Gateway. GPT returns element parameters; the website renders those elements with the same library used by Human Design.
 - The server-side instruction treats resources as options, not a checklist, and does not prescribe a number of elements/colours, a complexity level, composition style or aesthetic.
+- Sampling uses the selected model provider's default settings. Temperature is not exposed to researchers or sent by the application.
 - Both conditions export the same three primary design measures: element count, distinct shape types and distinct colours.
 - Published experiment versions, submissions, PNG files and metadata are stored with Netlify Blobs.
 
@@ -31,7 +32,7 @@ Netlify automatically provides `OPENAI_API_KEY` and `OPENAI_BASE_URL` when AI Ga
 - Normal participant AI requests are resolved against the server-side published experiment. Browser-supplied shape or colour rules cannot replace the published rules.
 - Researcher previews use the latest saved draft; published links use the immutable published version.
 - The 500-element value inside validation is only a technical anti-abuse/rendering safeguard, not a participant-facing design rule.
-- The background can be configured per experiment and Human/AI use the same starting background.
+- Human and AI use the same background rule. When background changes are enabled, both choose from the same fixed palette; the background is stored separately and is not counted as a design element or as one of the element colours.
 
 ## Local checks
 

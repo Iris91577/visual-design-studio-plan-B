@@ -61,7 +61,6 @@ export interface ExperimentConfig {
   ai: {
     method: GenerationMethod
     model: string
-    temperature: number
     technicalRetries: number
   }
   returnUrl: string

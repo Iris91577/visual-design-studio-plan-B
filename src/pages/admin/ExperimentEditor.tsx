@@ -21,7 +21,7 @@ function blankExperiment(): ExperimentConfig {
     canvas: { presetId: 'square-post', width: 1080, height: 1080, background: '#FFFFFF' },
     allowBackgroundChange: true, allowCustomColors: false, allowedShapes: ALL_SHAPE_TYPES, palette: DEFAULT_PALETTE,
     aiGenerationLimit: 1,
-    ai: { method: 'structured', model: 'gpt-6.1-sol', temperature: 1, technicalRetries: 1 },
+    ai: { method: 'structured', model: 'gpt-6.1-sol', technicalRetries: 1 },
     returnUrl: '', links: { human: uid('h').slice(2, 8), ai: uid('a').slice(2, 8) }, createdAt: now, updatedAt: now,
   }
 }
@@ -54,8 +54,8 @@ export function ExperimentEditor() {
 
   // Changes to the design rules of a published experiment produce a new version.
   const rulesChanged =
-    JSON.stringify([original.canvas.width, original.canvas.height, original.canvas.background, original.allowedShapes, original.palette, original.allowCustomColors]) !==
-    JSON.stringify([cfg.canvas.width, cfg.canvas.height, cfg.canvas.background, cfg.allowedShapes, cfg.palette, cfg.allowCustomColors])
+    JSON.stringify([original.canvas.width, original.canvas.height, original.canvas.background, original.allowBackgroundChange, original.allowedShapes, original.palette, original.allowCustomColors]) !==
+    JSON.stringify([cfg.canvas.width, cfg.canvas.height, cfg.canvas.background, cfg.allowBackgroundChange, cfg.allowedShapes, cfg.palette, cfg.allowCustomColors])
   const willVersion = original.status === 'published' && rulesChanged
 
   const sizeError = cfg.canvas.width < CANVAS_MIN || cfg.canvas.width > CANVAS_MAX || cfg.canvas.height < CANVAS_MIN || cfg.canvas.height > CANVAS_MAX
@@ -108,7 +108,7 @@ export function ExperimentEditor() {
         <div className="mx-8 mt-6 flex items-start gap-3 rounded-xl bg-amber-50 p-4 text-[13.5px] text-amber-900 ring-1 ring-amber-200">
           <Lock className="mt-0.5 size-4 shrink-0" />
           <div>
-            <b>v{original.version} is locked.</b> You changed the canvas, library, palette or element limit. Publishing creates <b>v{original.version + 1}</b>;
+            <b>v{original.version} is locked.</b> You changed the canvas, background rule, library or palette. Publishing creates <b>v{original.version + 1}</b>;
             the {sessionsCount} existing sessions stay on v{original.version}, and the links switch to the new version for new participants.
           </div>
         </div>
@@ -162,7 +162,7 @@ export function ExperimentEditor() {
                   ))}
                 </div>
               </div>
-              <Toggle checked={cfg.allowBackgroundChange} onChange={(v) => set({ allowBackgroundChange: v })} label="Human participants may change the background" />
+              <Toggle checked={cfg.allowBackgroundChange} onChange={(v) => set({ allowBackgroundChange: v })} label="Human and AI may choose the background" />
             </div>
           </Section>
 
@@ -222,15 +222,12 @@ export function ExperimentEditor() {
             </div>
           </Section>
 
-          <Section title="AI model" hint="Structured generation: GPT decides the design; the site draws it with the same resources as the Human condition.">
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <Section title="AI model" hint="Structured generation: GPT decides the design; the site draws it with the same resources as the Human condition. Sampling uses the model provider’s default and is not researcher-adjustable.">
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
               <Field label="Model">
                 <select value={cfg.ai.model} onChange={(e) => set({ ai: { ...cfg.ai, model: e.target.value } })} className={input}>
                   {AI_MODELS.filter((m) => m.method === 'structured').map((m) => <option key={m.id} value={m.id}>{m.provider} · {m.label}</option>)}
                 </select>
-              </Field>
-              <Field label={`Temperature · ${cfg.ai.temperature.toFixed(1)}`}>
-                <input type="range" min={0} max={1} step={0.1} value={cfg.ai.temperature} onChange={(e) => set({ ai: { ...cfg.ai, temperature: Number(e.target.value) } })} className="mt-3 w-full accent-brand-600" />
               </Field>
               <Field label="Technical retries" hint="Only on errors or invalid output">
                 <input type="number" min={0} max={5} value={cfg.ai.technicalRetries} onChange={(e) => set({ ai: { ...cfg.ai, technicalRetries: Number(e.target.value) } })} className={input} />
