@@ -41,14 +41,23 @@ export function HumanEditor({
   // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (submitOpen) return
-      const tag = (e.target as HTMLElement).tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      if (submitOpen || e.defaultPrevented || e.isComposing) return
+      const target = e.target
+      if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select'))) return
       const mod = e.metaKey || e.ctrlKey
-      if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? ed.redo() : ed.undo(); return }
-      if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); ed.redo(); return }
-      if (!ed.selectedId) return
-      if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); ed.duplicate(); return }
+      const key = e.key.toLowerCase()
+      if (mod && !e.altKey && !e.shiftKey && key === 'c') {
+        if (!window.getSelection()?.toString() && ed.copySelection()) e.preventDefault()
+        return
+      }
+      if (mod && !e.altKey && !e.shiftKey && key === 'v') {
+        if (!e.repeat && ed.pasteSelection()) e.preventDefault()
+        return
+      }
+      if (mod && key === 'z') { e.preventDefault(); e.shiftKey ? ed.redo() : ed.undo(); return }
+      if (mod && key === 'y') { e.preventDefault(); ed.redo(); return }
+      if (!ed.selectedIds.length) return
+      if (mod && key === 'd') { e.preventDefault(); ed.duplicate(); return }
       if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); ed.remove(); return }
       if (e.key === 'Escape') { ed.select(null); return }
       const step = e.shiftKey ? 20 : 4
@@ -112,6 +121,13 @@ export function HumanEditor({
                 <span>Layer {layerIdx + 1}</span>
               </div>
             </>
+          ) : ed.selectedIds.length > 1 ? (
+            <>
+              <span className="px-2 text-[13px] font-semibold text-slate-600" role="status">{ed.selectedIds.length} selected</span>
+              <IconButton label="Duplicate selection (Ctrl+D)" onClick={ed.duplicate} disabled={ed.atLimit}><Copy className="size-4" /> Duplicate</IconButton>
+              <IconButton label="Delete selection" onClick={ed.remove} className="hover:!bg-red-50 hover:!text-red-600"><Trash2 className="size-4" /> Delete</IconButton>
+              <span className="hidden px-2 text-[13px] text-slate-500 lg:inline">Drag to move together. Copy and paste with Ctrl or ⌘ + C / V.</span>
+            </>
           ) : (
             <>
               {config.allowBackgroundChange && (
@@ -121,7 +137,7 @@ export function HumanEditor({
                 </>
               )}
               <span className="px-2 text-[13px] text-slate-400">
-                {ed.elements.length ? 'Select an element to change its colour, layer, or duplicate it.' : 'Add shapes from the Elements panel to start designing.'}
+                {ed.elements.length ? 'Shift-click elements or drag from a blank part of the canvas to select several.' : 'Add shapes from the Elements panel to start designing.'}
               </span>
             </>
           )
@@ -132,9 +148,10 @@ export function HumanEditor({
             height={config.canvas.height}
             background={ed.background}
             elements={ed.elements}
-            selectedId={ed.selectedId}
+            selectedIds={ed.selectedIds}
             interactive
             onSelect={ed.select}
+            onSelectMany={ed.selectMany}
             onGestureStart={ed.beginGesture}
             onGestureUpdate={ed.updateLive}
             onGestureEnd={ed.endGesture}

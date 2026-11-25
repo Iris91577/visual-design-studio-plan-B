@@ -3,33 +3,53 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { lineWeight, SHAPE_MAP } from '../lib/shapes'
 import type { DesignElement } from '../lib/types'
 import { ShapeGroup } from './ShapeSvg'
+import { translatedPositions } from './useEditor'
 
 interface Props {
   width: number
   height: number
   background: string
   elements: DesignElement[]
-  selectedId?: string | null
+  selectedIds?: string[]
   interactive?: boolean
-  onSelect?: (id: string | null) => void
+  onSelect?: (id: string | null, toggle?: boolean) => void
+  onSelectMany?: (ids: string[], extend?: boolean) => void
   onGestureStart?: () => void
-  onGestureUpdate?: (id: string, patch: Partial<DesignElement>) => void
+  onGestureUpdate?: (patches: ReadonlyMap<string, Partial<DesignElement>>) => void
   onGestureEnd?: (kind: 'move' | 'resize' | 'rotate') => void
   /** Rendered over the canvas, e.g. a loading state */
   overlay?: React.ReactNode
 }
 
-type Gesture =
-  | { kind: 'move'; id: string; start: Pt; el: DesignElement; moved: boolean }
-  | { kind: 'resize'; id: string; el: DesignElement; sx: number; sy: number; fixed: Pt }
-  | { kind: 'rotate'; id: string; el: DesignElement }
+type Gesture = { pointerId: number } & (
+  | { kind: 'move'; id: string; start: Pt; group: DesignElement[]; moved: boolean }
+  | { kind: 'resize'; el: DesignElement; sx: number; sy: number; fixed: Pt }
+  | { kind: 'rotate'; el: DesignElement }
+  | { kind: 'marquee'; start: Pt; extend: boolean }
+)
 
 interface Pt { x: number; y: number }
+interface Box { x: number; y: number; width: number; height: number }
+
+function selectionBox(start: Pt, end: Pt, width: number, height: number): Box {
+  const x = Math.min(width, Math.max(0, end.x))
+  const y = Math.min(height, Math.max(0, end.y))
+  return { x: Math.min(start.x, x), y: Math.min(start.y, y), width: Math.abs(x - start.x), height: Math.abs(y - start.y) }
+}
 
 const rad = (d: number) => (d * Math.PI) / 180
 const rot = (p: Pt, deg: number): Pt => {
   const c = Math.cos(rad(deg)), s = Math.sin(rad(deg))
   return { x: p.x * c - p.y * s, y: p.x * s + p.y * c }
+}
+
+function intersectsSelection(el: DesignElement, box: Box): boolean {
+  const c = Math.abs(Math.cos(rad(el.rotation)))
+  const s = Math.abs(Math.sin(rad(el.rotation)))
+  const halfWidth = (el.width * c + el.height * s) / 2
+  const halfHeight = (el.width * s + el.height * c) / 2
+  return el.x + halfWidth >= box.x && el.x - halfWidth <= box.x + box.width
+    && el.y + halfHeight >= box.y && el.y - halfHeight <= box.y + box.height
 }
 
 const HANDLES: { sx: number; sy: number; cursor: string }[] = [
@@ -39,14 +59,15 @@ const HANDLES: { sx: number; sy: number; cursor: string }[] = [
 ]
 
 export function DesignCanvas({
-  width: W, height: H, background, elements, selectedId, interactive = false,
-  onSelect, onGestureStart, onGestureUpdate, onGestureEnd, overlay,
+  width: W, height: H, background, elements, selectedIds = [], interactive = false,
+  onSelect, onSelectMany, onGestureStart, onGestureUpdate, onGestureEnd, overlay,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const [scale, setScale] = useState(0.4)
   const gesture = useRef<Gesture | null>(null)
   const [activeKind, setActiveKind] = useState<Gesture['kind'] | null>(null)
+  const [marquee, setMarquee] = useState<Box | null>(null)
 
   // Fit the canvas to the available workspace while keeping its aspect ratio.
   useLayoutEffect(() => {
@@ -72,16 +93,15 @@ export function DesignCanvas({
     if (!interactive) return
     const onMove = (e: PointerEvent) => {
       const g = gesture.current
-      if (!g) return
+      if (!g || g.pointerId !== e.pointerId) return
       const p = toCanvas(e)
-      if (g.kind === 'move') {
+      if (g.kind === 'marquee') {
+        setMarquee(Math.hypot(p.x - g.start.x, p.y - g.start.y) >= 3 / scale ? selectionBox(g.start, p, W, H) : null)
+      } else if (g.kind === 'move') {
         const dx = p.x - g.start.x, dy = p.y - g.start.y
         if (!g.moved && Math.hypot(dx, dy) < 2 / scale) return
         g.moved = true
-        onGestureUpdate?.(g.id, {
-          x: Math.max(0, Math.min(W, g.el.x + dx)),
-          y: Math.max(0, Math.min(H, g.el.y + dy)),
-        })
+        onGestureUpdate?.(translatedPositions(g.group, dx, dy, W, H))
       } else if (g.kind === 'resize') {
         const def = SHAPE_MAP[g.el.type]
         const min = Math.max(8, Math.min(W, H) * 0.015)
@@ -101,25 +121,38 @@ export function DesignCanvas({
         if (def.isLine) h = g.el.height
         // Centre sits halfway between the fixed anchor and the dragged handle, in the element's frame.
         const off = rot({ x: (g.sx * w) / 2, y: (g.sy * h) / 2 }, g.el.rotation)
-        onGestureUpdate?.(g.id, {
+        onGestureUpdate?.(new Map([[g.el.id, {
           width: Math.round(w), height: Math.round(h),
           x: g.fixed.x + off.x,
           y: g.fixed.y + off.y,
-        })
+        }]]))
       } else {
         let a = (Math.atan2(p.y - g.el.y, p.x - g.el.x) * 180) / Math.PI + 90
         a = e.shiftKey ? Math.round(a / 15) * 15 : Math.round(a)
         a = ((a % 360) + 360) % 360
         if (a > 180) a -= 360
-        onGestureUpdate?.(g.id, { rotation: a })
+        onGestureUpdate?.(new Map([[g.el.id, { rotation: a }]]))
       }
     }
-    const onUp = () => {
+    const onUp = (e: PointerEvent) => {
       const g = gesture.current
-      if (!g) return
+      if (!g || g.pointerId !== e.pointerId) return
       gesture.current = null
       setActiveKind(null)
-      if (g.kind !== 'move' || g.moved) onGestureEnd?.(g.kind)
+      if (g.kind === 'marquee') {
+        setMarquee(null)
+        if (e.type === 'pointercancel') return
+        const p = toCanvas(e)
+        if (Math.hypot(p.x - g.start.x, p.y - g.start.y) < 3 / scale) {
+          if (!g.extend) onSelect?.(null)
+          return
+        }
+        const box = selectionBox(g.start, p, W, H)
+        onSelectMany?.(elements.filter((el) => intersectsSelection(el, box)).map((el) => el.id), g.extend)
+        return
+      }
+      onGestureEnd?.(g.kind)
+      if (g.kind === 'move' && !g.moved && e.type === 'pointerup') onSelect?.(g.id)
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
@@ -132,37 +165,55 @@ export function DesignCanvas({
   })
 
   const startMove = (e: React.PointerEvent, el: DesignElement) => {
-    if (!interactive) return
+    if (!interactive || e.button !== 0 || gesture.current) return
     e.stopPropagation()
     e.preventDefault()
-    onSelect?.(el.id)
+    svgRef.current?.focus({ preventScroll: true })
+    if (e.shiftKey) {
+      onSelect?.(el.id, true)
+      return
+    }
+    const isSelected = selectedIds.includes(el.id)
+    if (!isSelected) onSelect?.(el.id)
     onGestureStart?.()
-    gesture.current = { kind: 'move', id: el.id, start: toCanvas(e), el, moved: false }
+    const group = isSelected ? elements.filter((item) => selectedIds.includes(item.id)) : [el]
+    gesture.current = { kind: 'move', pointerId: e.pointerId, id: el.id, start: toCanvas(e), group, moved: false }
     setActiveKind('move')
   }
 
+  const startMarquee = (e: React.PointerEvent) => {
+    if (!interactive || e.button !== 0 || gesture.current) return
+    e.preventDefault()
+    svgRef.current?.focus({ preventScroll: true })
+    gesture.current = { kind: 'marquee', pointerId: e.pointerId, start: toCanvas(e), extend: e.shiftKey }
+    setActiveKind('marquee')
+  }
+
   const startResize = (e: React.PointerEvent, el: DesignElement, sx: number, sy: number) => {
+    if (e.button !== 0 || gesture.current) return
     e.stopPropagation()
     e.preventDefault()
     onGestureStart?.()
     // The anchor is the opposite handle (or opposite edge midpoint), expressed in canvas space.
     const fixedLocal = { x: -sx * el.width / 2, y: -sy * el.height / 2 }
     const fr = rot(fixedLocal, el.rotation)
-    gesture.current = { kind: 'resize', id: el.id, el, sx, sy, fixed: { x: el.x + fr.x, y: el.y + fr.y } }
+    gesture.current = { kind: 'resize', pointerId: e.pointerId, el, sx, sy, fixed: { x: el.x + fr.x, y: el.y + fr.y } }
     setActiveKind('resize')
   }
 
   const startRotate = (e: React.PointerEvent, el: DesignElement) => {
+    if (e.button !== 0 || gesture.current) return
     e.stopPropagation()
     e.preventDefault()
     onGestureStart?.()
-    gesture.current = { kind: 'rotate', id: el.id, el }
+    gesture.current = { kind: 'rotate', pointerId: e.pointerId, el }
     setActiveKind('rotate')
   }
 
   const weight = lineWeight(W, H)
   const px = 1 / scale // one screen pixel in canvas units
-  const sel = interactive ? elements.find((e) => e.id === selectedId) : undefined
+  const selected = interactive ? elements.filter((el) => selectedIds.includes(el.id)) : []
+  const sel = selected.length === 1 ? selected[0] : undefined
   const selDef = sel ? SHAPE_MAP[sel.type] : null
 
   return (
@@ -173,8 +224,9 @@ export function DesignCanvas({
           width={W * scale}
           height={H * scale}
           viewBox={`0 0 ${W} ${H}`}
-          className="block touch-none select-none"
-          onPointerDown={() => interactive && onSelect?.(null)}
+          tabIndex={interactive ? -1 : undefined}
+          className="block touch-none select-none outline-none"
+          onPointerDown={startMarquee}
         >
           <defs>
             <clipPath id="vds-canvas-clip"><rect width={W} height={H} /></clipPath>
@@ -201,6 +253,17 @@ export function DesignCanvas({
             ))}
           </g>
 
+          {selected.length > 1 && selected.map((el) => (
+            <rect key={el.id} transform={`translate(${el.x} ${el.y}) rotate(${el.rotation})`}
+              x={-el.width / 2} y={-el.height / 2} width={el.width} height={el.height}
+              fill="none" stroke="#2563EB" strokeWidth={1.5 * px} pointerEvents="none"
+            />
+          ))}
+          {marquee && (
+            <rect {...marquee} fill="#2563EB" fillOpacity={0.12} stroke="#2563EB"
+              strokeWidth={px} strokeDasharray={`${4 * px} ${3 * px}`} pointerEvents="none"
+            />
+          )}
           {sel && selDef && (
             <g transform={`translate(${sel.x} ${sel.y}) rotate(${sel.rotation})`}>
               <rect
