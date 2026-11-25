@@ -36,7 +36,7 @@ export function ParticipantEntry() {
   if (resolved.experiment.status !== 'published')
     return <Notice title="This study isn’t open yet" body="Please return to the survey and contact the research team." />
   const pid = resolveParticipantId(code, params.get('pid'))
-  return <ParticipantView config={resolved.experiment} condition={resolved.condition} code={code} pid={pid} />
+  return <ParticipantView key={JSON.stringify([code, pid])} config={resolved.experiment} condition={resolved.condition} code={code} pid={pid} />
 }
 
 /** Researcher preview of an experiment: /demo/:condition?exp=exp-01 */

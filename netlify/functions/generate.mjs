@@ -7,6 +7,9 @@ const usageStore=()=>getStore('vds-ai-usage',{region:'ap-southeast-1'})
 const json=(data,status=200)=>Response.json(data,{status,headers:{'cache-control':'no-store','x-content-type-options':'nosniff'}})
 const getJSON=(bucket,key)=>bucket.get(key,{type:'json',consistency:'strong'})
 const HEX=/^#[0-9A-F]{6}$/i
+const JOB_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i
+const PARTICIPANT_ID = /^[\w.-]{1,80}$/
+const JOB_LIFETIME_MS = 8 * 60_000
 
 async function resolveConfig(request,code,previewConfig){
   if(typeof code==='string'&&code.startsWith('preview-')&&previewConfig)return await isAdmin(request)?{config:previewConfig,preview:true}:null
@@ -49,33 +52,178 @@ function validate(raw,config){
   return{background,elements,issues}
 }
 
-export default async(request)=>{
- if(request.method!=='POST')return json({error:'Method not allowed.'},405)
+async function requestDesign({ config, prompt, requestedAt }) {
  const apiKey=process.env.OPENAI_API_KEY,baseUrl=process.env.OPENAI_BASE_URL
- if(!apiKey||!baseUrl)return json({error:'Netlify AI Gateway is not active. Publish this project once, then try again.'},503)
- const body=await request.json().catch(()=>null),prompt=typeof body?.prompt==='string'?body.prompt.trim():''
- if(!prompt)return json({error:'Please enter a prompt.'},400);if(prompt.length>4000)return json({error:'The prompt is too long.'},400)
- const resolved=await resolveConfig(request,body.code,body.previewConfig)
- if(!resolved)return json({error:'This AI study link is not valid or the researcher preview is not authenticated.'},404)
- const config={...resolved.config,allowedShapes:supportedShapes(resolved.config.allowedShapes),palette:fixedPalette(),allowCustomColors:false},participantId=typeof body.participantId==='string'?body.participantId:''
- if(!config.allowedShapes.length)return json({error:'This experiment has no supported design elements configured.'},400)
- if(!resolved.preview&&!/^[\w.-]{1,80}$/.test(participantId))return json({error:'A valid participant ID is required.'},400)
- const usageBucket=usageStore(),key=resolved.preview?'':await usageKey(body.code,participantId)
- const prior=resolved.preview?null:await getJSON(usageBucket,key),used=Number(prior?.successful)||0,limit=Math.max(1,Math.min(10,Number(config.aiGenerationLimit)||1))
- if(!resolved.preview&&used>=limit)return json({error:'The generation limit for this participant has already been reached.'},429)
- const model=config.ai?.model||'gpt-6.1-sol',requestedAt=new Date().toISOString(),attempts=Math.max(1,Math.min(4,(config.ai?.technicalRetries||0)+1)),history=[]
+ if(!apiKey||!baseUrl)throw new Error('Netlify AI Gateway is unavailable.')
+ const model=config.ai?.model||'gpt-6.1-sol',attempts=Math.max(1,Math.min(4,(Number(config.ai?.technicalRetries)||0)+1)),history=[]
  for(let attempt=0;attempt<attempts;attempt++){
   try{
    const backgroundValues=config.allowBackgroundChange?config.palette.map(c=>c.hex):[String(config.canvas.background).toUpperCase()]
-   const response=await fetch(`${baseUrl.replace(/\/$/,'')}/v1/chat/completions`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${apiKey}`},body:JSON.stringify({model,messages:[{role:'system',content:instructions(config)},{role:'user',content:prompt}],response_format:{type:'json_schema',json_schema:{name:'visual_design',strict:true,schema:schema(config.allowedShapes,config.palette.map(c=>c.hex),backgroundValues)}}})})
+   const response=await fetch(`${baseUrl.replace(/\/$/,'')}/v1/chat/completions`,{method:'POST',signal:AbortSignal.timeout(75_000),headers:{'content-type':'application/json',authorization:`Bearer ${apiKey}`},body:JSON.stringify({model,messages:[{role:'system',content:instructions(config)},{role:'user',content:prompt}],response_format:{type:'json_schema',json_schema:{name:'visual_design',strict:true,schema:schema(config.allowedShapes,config.palette.map(c=>c.hex),backgroundValues)}}})})
    const payload=await response.json().catch(()=>({}));if(!response.ok){history.push(payload.error?.message||`Provider error ${response.status}`);continue}
    const rawText=parseContent(payload);let raw;try{raw=JSON.parse(rawText)}catch{history.push('The model did not return valid JSON.');continue}
    const checked=validate(raw,config);if(checked.issues.length){history.push(...checked.issues);continue}
-   if(!resolved.preview)await usageBucket.setJSON(key,{successful:used+1,code:body.code,participantId,updatedAt:new Date().toISOString()})
-   return json({background:checked.background,elements:checked.elements,model,requestedAt,respondedAt:new Date().toISOString(),rawOutput:rawText,retries:attempt,validation:{passed:true,issues:history}})
+   return {background:checked.background,elements:checked.elements,model,requestedAt,respondedAt:new Date().toISOString(),rawOutput:rawText,retries:attempt,validation:{passed:true,issues:history}}
   }catch(error){history.push(error instanceof Error?error.message:'Unknown provider error')}
  }
  console.error('Structured generation failed',history)
- return json({error:'The AI could not return a valid design. Please try again.',validation:{passed:false,issues:history}},502)
+ throw new Error('The AI could not return a valid design. Please try again.')
 }
-export const config={rateLimit:{windowLimit:10,windowSize:60,aggregateBy:['ip','domain']}}
+
+function loadUsage(bucket, key) {
+  return bucket.getWithMetadata(key, { type: 'json', consistency: 'strong' })
+}
+
+function jobResponse(record) {
+  const { job } = record
+  if (job.status === 'done') {
+    return json({ status: 'done', result: job.result, successful: record.successful })
+  }
+  if (job.status === 'failed' || Date.now() >= job.expiresAt) {
+    return json({ status: 'failed', error: job.error ?? 'Generation took too long. Please try again.' })
+  }
+  return json({ status: 'pending' }, 202)
+}
+
+async function startWorker(dispatch, request, context, key, record) {
+  try {
+    await dispatch(request, context, key, record.job.token)
+    return jobResponse(record)
+  } catch (error) {
+    console.error('Could not dispatch generation worker', error?.message)
+    return json({ error: 'Could not start generation. Try again to resume this request.', recoverable: true }, 503)
+  }
+}
+
+async function dispatchWorker(request, context, key, token) {
+  const origin = context?.deploy?.published ? context.site.url : process.env.DEPLOY_URL ?? new URL(request.url).origin
+  const url = new URL('/.netlify/functions/generate-background', origin)
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ key, token }),
+    redirect: 'error',
+    signal: AbortSignal.timeout(8_000),
+  })
+  if (response.status !== 202) throw new Error(`Worker dispatch returned ${response.status}.`)
+}
+
+export function createGenerationEndpoint({
+  getUsageStore = usageStore,
+  resolve = resolveConfig,
+  authorizePreview = isAdmin,
+  dispatch = dispatchWorker,
+} = {}) {
+  return async (request, context) => {
+    const { method } = request
+    if (method !== 'GET' && method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
+    const body = method === 'POST'
+      ? await request.json().catch(() => ({}))
+      : Object.fromEntries(new URL(request.url).searchParams)
+    const { code, participantId, jobId } = body ?? {}
+    if (typeof code !== 'string' || code.length > 180
+      || typeof jobId !== 'string' || !JOB_ID.test(jobId)
+      || typeof participantId !== 'string' || !PARTICIPANT_ID.test(participantId)) {
+      return json({ error: 'Invalid generation request. Reload the design page and try again.' }, 400)
+    }
+    const preview = code.startsWith('preview-')
+    if (preview && !(await authorizePreview(request))) {
+      return json({ error: 'Researcher preview is not authenticated.' }, 401)
+    }
+    const key = preview ? `preview:${jobId}` : await usageKey(code, participantId)
+    const bucket = getUsageStore()
+    const current = await loadUsage(bucket, key)
+    const activeJob = current?.data?.job
+
+    if (activeJob?.id === jobId && current.data.code === code) {
+      if (method === 'POST' && activeJob.status === 'queued' && Date.now() < activeJob.expiresAt) {
+        return startWorker(dispatch, request, context, key, current.data)
+      }
+      return jobResponse(current.data)
+    }
+    if (method === 'GET') return json({ error: 'Generation request not found.' }, 404)
+    if (activeJob && ['queued', 'running'].includes(activeJob.status) && Date.now() < activeJob.expiresAt) {
+      return json({ error: 'A generation is already in progress. Return to the tab where it started.' }, 409)
+    }
+    if (!process.env.OPENAI_API_KEY || !process.env.OPENAI_BASE_URL) {
+      return json({ error: 'The AI Gateway is unavailable.' }, 503)
+    }
+    const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
+    if (!prompt || prompt.length > 4000) return json({ error: 'Enter a prompt between 1 and 4000 characters.' }, 400)
+    const resolved = await resolve(request, code, body.previewConfig)
+    if (!resolved) return json({ error: 'This AI study link is not valid.' }, 404)
+    const successful = Number(current?.data?.successful) || 0
+    const limit = Math.max(1, Math.min(10, Number(resolved.config.aiGenerationLimit) || 1))
+    if (!preview && successful >= limit) {
+      return json({ error: 'The generation limit for this participant has already been reached.' }, 429)
+    }
+    const config = {
+      ...resolved.config,
+      allowedShapes: supportedShapes(resolved.config.allowedShapes),
+      palette: fixedPalette(),
+      allowCustomColors: false,
+    }
+    if (!config.allowedShapes.length) return json({ error: 'This experiment has no supported design elements configured.' }, 400)
+    const now = Date.now()
+    const job = {
+      id: jobId,
+      token: crypto.randomUUID(),
+      status: 'queued',
+      requestedAt: new Date(now).toISOString(),
+      expiresAt: now + JOB_LIFETIME_MS,
+      config,
+      prompt,
+    }
+    const record = { code, participantId, successful, job }
+    const condition = current ? { onlyIfMatch: current.etag } : { onlyIfNew: true }
+    const created = await bucket.setJSON(key, record, condition)
+    if (!created.modified) {
+      const latest = (await loadUsage(bucket, key))?.data
+      if (latest?.job?.id === jobId && latest.code === code) {
+        return latest.job.status === 'queued'
+          ? startWorker(dispatch, request, context, key, latest)
+          : jobResponse(latest)
+      }
+      return json({ error: 'Another generation request just started. Return to the tab where it started.' }, 409)
+    }
+    return startWorker(dispatch, request, context, key, record)
+  }
+}
+
+export function createGenerationWorker({ getUsageStore = usageStore, generate = requestDesign } = {}) {
+  return async (request) => {
+    if (request.method !== 'POST') return
+    const { key, token } = await request.json().catch(() => ({})) ?? {}
+    if (typeof key !== 'string' || !/^(usage:[a-f0-9]{32}|preview:[a-f0-9-]{36})$/i.test(key)
+      || typeof token !== 'string' || !JOB_ID.test(token)) return
+    const bucket = getUsageStore()
+    const current = await loadUsage(bucket, key)
+    const job = current?.data?.job
+    if (job?.token !== token || job.status !== 'queued' || Date.now() >= job.expiresAt) return
+    const record = current.data
+    const running = await bucket.setJSON(key, { ...record, job: { ...job, status: 'running' } }, { onlyIfMatch: current.etag })
+    if (!running.modified) return
+    const claimedEtag = running.etag ?? (await loadUsage(bucket, key))?.etag
+    if (!claimedEtag) throw new Error('Generation claim is missing its storage version.')
+    const condition = { onlyIfMatch: claimedEtag }
+    const savedJob = { id: job.id, expiresAt: job.expiresAt }
+    let result
+    try {
+      result = await generate(job)
+    } catch (error) {
+      console.error('Background generation failed', error?.message)
+      await bucket.setJSON(key, { ...record, job: { ...savedJob, status: 'failed', error: 'The AI could not finish this design. Please try again.' } }, condition)
+      return
+    }
+    const saved = await bucket.setJSON(key, {
+      ...record,
+      successful: record.successful + 1,
+      updatedAt: new Date().toISOString(),
+      job: { ...savedJob, status: 'done', result },
+    }, condition)
+    if (!saved.modified) console.error('Generation finished after its job was replaced.')
+  }
+}
+
+export default createGenerationEndpoint()
+export const config = { rateLimit: { windowLimit: 120, windowSize: 60, aggregateBy: ['ip', 'domain'] } }

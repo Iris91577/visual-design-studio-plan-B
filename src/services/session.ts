@@ -1,5 +1,6 @@
 import { completionCode, uid } from '../lib/ids'
 import type { ActionLogEntry, AiGenerationRecord, DesignElement, ExperimentConfig } from '../lib/types'
+import type { GenerationJob } from './ai'
 
 /** Drafts remain in the participant's browser for refresh recovery. Final PNGs,
  * immutable experiment snapshots and submission metadata are stored by the
@@ -24,6 +25,7 @@ export interface Draft {
   prompt?: string
   generationsUsed?: number
   aiGenerations?: AiGenerationRecord[]
+  pendingGeneration?: GenerationJob
 }
 
 export function loadDraft(code: string, pid: string): Draft | null {
